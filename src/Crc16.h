@@ -1,97 +1,94 @@
-// CRC compatibility, adapted from the C-only comments here:
-// http://svn.savannah.nongnu.org/viewvc/trunk/avr-libc/include/util/crc16.h?revision=933&root=avr-libc&view=markup
+//-------------------------------------------------------------------------------------
+// CRC16 support class
+// Based on various examples found on the web
+// Copyright (C) 2014 Vincenzo Mennella (see license.txt)
+// History
+//  0.1.0 31/05/2014:   First public code release
+//  0.1.1 17/12/2014:   Minor revision and commented code
+//  0.1.2 06/06/2019:   Fix reflect routine for 16 bit data
+//                      Added ModBus and Mcrf4XX inline functions
+//
+// License
+// "MIT Open Source Software License":
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in the
+// Software without restriction, including without limitation the rights to use, copy,
+// modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+// and to permit persons to whom the Software is furnished to do so, subject to
+// the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//-------------------------------------------------------------------------------------
 
-/* Copyright (c) 2002, 2003, 2004  Marek Michalkiewicz
-   All rights reserved.
+#ifndef CRC16_H
+#define CRC16_H
+#define LIBRARY_VERSION_CRC16_H "0.1.2"
 
-   Redistribution and use in source and binary forms, with or without
-   modification, are permitted provided that the following conditions are met:
+#if defined(ARDUINO) && ARDUINO >= 100
+#include "Arduino.h"
+#elif defined(ARDUINO)
+#include "WProgram.h"
+#else
+#include <cstdint>
+#endif
 
-   * Redistributions of source code must retain the above copyright
-     notice, this list of conditions and the following disclaimer.
-
-   * Redistributions in binary form must reproduce the above copyright
-     notice, this list of conditions and the following disclaimer in
-     the documentation and/or other materials provided with the
-     distribution.
-
-   * Neither the name of the copyright holders nor the names of
-     contributors may be used to endorse or promote products derived
-     from this software without specific prior written permission.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
-  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-  POSSIBILITY OF SUCH DAMAGE. */
-
-#ifndef _UTIL_CRC16_H_
-#define _UTIL_CRC16_H_
-
-#include <stdint.h>
-
-static inline uint16_t _crc16_update(uint16_t crc, uint8_t data) __attribute__((always_inline, unused));
-static inline uint16_t _crc16_update(uint16_t crc, uint8_t data)
+class Crc16
 {
-	unsigned int i;
+private:
+    //Crc parameters
+    uint16_t _msbMask;
+    uint16_t _mask;
+    uint16_t _xorIn;
+    uint16_t _xorOut;
+    uint16_t _polynomial;
+    uint8_t _reflectIn;
+    uint8_t _reflectOut;
+    //Crc value
+    uint16_t _crc;
+    uint8_t reflect(uint8_t data);
+    uint16_t reflect(uint16_t data);
 
-	crc ^= data;
-	for (i = 0; i < 8; ++i) {
-		if (crc & 1) {
-			crc = (crc >> 1) ^ 0xA001;
-		} else {
-			crc = (crc >> 1);
-		}
-	}
-	return crc;
-}
+public:
+    Crc16()
+    {
+        //Default to XModem parameters
+        _reflectIn = false;
+        _reflectOut = false;
+        _polynomial = 0x1021;
+        _xorIn = 0x0000;
+        _xorOut = 0x0000;
+        _msbMask = 0x8000;
+        _mask = 0xFFFF;
+        _crc = _xorIn;
+    }
 
-static inline uint16_t _crc_xmodem_update(uint16_t crc, uint8_t data) __attribute__((always_inline, unused));
-static inline uint16_t _crc_xmodem_update(uint16_t crc, uint8_t data)
-{
-	unsigned int i;
+    Crc16(uint8_t reflectIn, uint8_t reflectOut, uint16_t polynomial, uint16_t xorIn, uint16_t xorOut, uint16_t msbMask, uint16_t mask)
+    {
+        _reflectIn = reflectIn;
+        _reflectOut = reflectOut;
+        _polynomial = polynomial;
+        _xorIn = xorIn;
+        _xorOut = xorOut;
+        _msbMask = msbMask;
+        _mask = mask;
+        _crc = _xorIn;
+    }
 
-	crc = crc ^ ((uint16_t)data << 8);
-	for (i=0; i<8; i++) {
-		if (crc & 0x8000) {
-			crc = (crc << 1) ^ 0x1021;
-		} else {
-			crc <<= 1;
-		}
-	}
-	return crc;
-}
-
-static inline uint16_t _crc_ccitt_update (uint16_t crc, uint8_t data) __attribute__((always_inline, unused));
-static inline uint16_t _crc_ccitt_update (uint16_t crc, uint8_t data)
-{
-	data ^= (crc & 255);
-	data ^= data << 4;
-
-	return ((((uint16_t)data << 8) | (crc >> 8)) ^ (uint8_t)(data >> 4) 
-		^ ((uint16_t)data << 3));
-}
-
-static inline uint8_t _crc_ibutton_update(uint8_t crc, uint8_t data) __attribute__((always_inline, unused));
-static inline uint8_t _crc_ibutton_update(uint8_t crc, uint8_t data)
-{
-	unsigned int i;
-
-	crc = crc ^ data;
-	for (i = 0; i < 8; i++) {
-		if (crc & 0x01) {
-			crc = (crc >> 1) ^ 0x8C;
-		} else {
-			crc >>= 1;
-		}
-	}
-	return crc;
-}
+    void clearCrc();
+    void updateCrc(uint8_t data);
+    uint16_t getCrc();
+    unsigned int fastCrc(uint8_t data[], uint8_t start, uint16_t length, uint8_t reflectIn, uint8_t reflectOut, uint16_t polynomial, uint16_t xorIn, uint16_t xorOut, uint16_t msbMask, uint16_t mask);
+    unsigned int XModemCrc(uint8_t data[], uint8_t start, uint16_t length);
+    unsigned int Mcrf4XX(uint8_t data[], uint8_t start, uint16_t length);
+    unsigned int Modbus(uint8_t data[], uint8_t start, uint16_t length);
+};
 
 #endif
